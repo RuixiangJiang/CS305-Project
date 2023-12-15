@@ -69,7 +69,7 @@ def handle_post(client_socket, dir_path, request_data):
         if not match:
             raise ValueError("File content not found in multipart form data")
 
-        file_content = match.group(1).decode("utf-8")
+        file_content = match.group(1)
 
         # Extract the filename from the first part of the content
         filename_match = re.search(b'filename="([^"]+)"', received_content)
@@ -78,11 +78,12 @@ def handle_post(client_socket, dir_path, request_data):
 
         # Construct the full file path including the directory path
         filename = os.path.join(dir_path, filename_match.group(1).decode("utf-8"))
+
         print("Upload file: " + str(filename))
 
         # Create a file with the specified filename and content
         with open(filename, "wb") as file:
-            file.write(file_content.encode("utf-8"))
+            file.write(file_content)
 
         # Send a response back to the client
         response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 17\r\n\r\nFile uploaded!\r\n"
