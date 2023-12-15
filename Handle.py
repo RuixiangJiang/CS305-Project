@@ -1,24 +1,36 @@
-import socket
 import os
 import mimetypes
 import re
-import urllib.parse
-from FileListPage import send_directory_listing
-from urllib.parse import urlparse, unquote
+from FileListPage import send_directory_listing, parse_query_params
 
 project_path = "/Users/jrx/课程资料/CS305-Computer Network/Project"
 dir_path = project_path
+
+
 def handle_request(client_socket):
     global dir_path
     request_data = client_socket.recv(1024).decode("utf-8")
 
-    print("request data = ///////////\n" + str(request_data) + "\nrequest data ends///////////")
+    # print("request data = ///////////\n" + str(request_data) + "\nrequest data ends///////////")
 
     if not request_data:
         return
 
-    method, path, _ = request_data.split(" ", 2)
-    path = urllib.parse.unquote(path)
+    # Extract method, path, and HTTP version
+    start_line, _, rest = request_data.partition("\r\n")
+    method, path, _ = start_line.split(" ", 2)
+    query_string = ''
+
+    # Parse query parameters
+    if '?' in path:
+        path, query_string = path.split('?', 1)
+        query_params = parse_query_params(query_string)
+    else:
+        query_params = {}
+
+    print("path = " + str(path))
+    print("query_string = " + str(query_string))
+    print("query_params = " + str(query_params))
 
     if method == "GET":
         if path.endswith("/"):
@@ -28,7 +40,7 @@ def handle_request(client_socket):
     elif method == "POST":
         handle_post(client_socket, dir_path, request_data)
     elif method == "DELETE":
-        handle_delete(client_socket, path, dir_path)
+        handle_delete(client_socket, query_string.split("=")[1], dir_path)
 
 
 def handle_get(client_socket, path, request_data):
@@ -45,6 +57,7 @@ def handle_get(client_socket, path, request_data):
             send_directory_listing(client_socket, path, request_data)
     else:
         send_not_found(client_socket)
+
 
 def handle_post(client_socket, dir_path, request_data):
     try:
@@ -96,13 +109,8 @@ def handle_post(client_socket, dir_path, request_data):
         client_socket.send(error_message.encode("utf-8"))
 
 
-def handle_delete(client_socket, path, dir_path):
+def handle_delete(client_socket, relative_path, dir_path):
     try:
-        query_params = urlparse(path).query
-        print("path = " + path)
-        print("query_params" + str(query_params))
-        file_param = dict(qc.split("=") for qc in query_params.split("&"))
-        relative_path = unquote(file_param.get('file', ''))
         print("relative_path = " + str(relative_path))
         file_path = os.path.join(dir_path, relative_path.lstrip('/'))
 
@@ -125,12 +133,14 @@ def handle_delete(client_socket, path, dir_path):
         response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 21\r\n\r\nInternal Server Error\r\n"
         client_socket.send(response.encode("utf-8"))
 
+
 def send_file(client_socket, file_path):
     with open(file_path, "rb") as file:
         content = file.read()
         content_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
         response_headers = f"HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {len(content)}\r\n\r\n"
         client_socket.send(response_headers.encode("utf-8") + content)
+
 
 def send_not_found(client_socket):
     response = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\nNot Found\r\n"

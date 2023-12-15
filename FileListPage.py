@@ -1,11 +1,29 @@
-import urllib.parse
 import os
 
 
+def parse_query_params(request_data):
+    # Extract query string from request_data
+    _, _, query_string = request_data.partition("\r\n\r\n")
+
+    # Parse query parameters
+    query_params = {}
+    for param in query_string.split("&"):
+        key_value = param.split("=")
+        key = key_value[0]
+        value = key_value[1] if len(key_value) > 1 else ''
+        query_params[key] = value
+
+    return query_params
+
+
+def percent_encode_url(url):
+    return url
+
+
 def send_directory_listing(client_socket, dir_path, request):
-    query_params = urllib.parse.parse_qs(urllib.parse.urlsplit(request).query)
-    sustech_http = int(query_params.get('SUSTech-HTTP', [0])[0])
-    print("sustech-http = " + str(sustech_http))
+    query_params = parse_query_params(request)
+    sustech_http = int(query_params.get('SUSTech-HTTP', '0'))
+    print("sustech-http =", sustech_http)
     file_list = os.listdir(dir_path)
     content = """
         <html>
@@ -95,8 +113,8 @@ def send_directory_listing(client_socket, dir_path, request):
             <button onclick="uploadFile()">Upload</button>
             <ul>
     """
-    content += f'<li><a href="{urllib.parse.quote("..")}">返回上一级</a></li>'
-    content += f'<li><a href="{urllib.parse.quote("/")}">返回根目录</a></li>'
+    content += f'<li><a href="{percent_encode_url("..")}">返回上一级</a></li>'
+    content += f'<li><a href="{percent_encode_url("/")}">返回根目录</a></li>'
 
     for file in file_list:
         file_path = os.path.join(dir_path, file)
@@ -104,18 +122,18 @@ def send_directory_listing(client_socket, dir_path, request):
             file += "/"
             content += f'''
                 <li>
-                    <a href="{urllib.parse.quote(file)}">{file}</a> 
-                    <button onclick="deleteFile('{urllib.parse.quote(file)}')">Delete</button>
-                    <button onclick="downloadFile('{urllib.parse.quote(file)}', 0)">Download (SUSTech-HTTP=0)</button>
-                    <button onclick="downloadFile('{urllib.parse.quote(file)}', 1)">Download (SUSTech-HTTP=1)</button>
+                    <a href="{percent_encode_url(file)}">{file}</a> 
+                    <button onclick="deleteFile('{percent_encode_url(file)}')">Delete</button>
+                    <button onclick="downloadFile('{percent_encode_url(file)}', 0)">Download (SUSTech-HTTP=0)</button>
+                    <button onclick="downloadFile('{percent_encode_url(file)}', 1)">Download (SUSTech-HTTP=1)</button>
                 </li>
             '''
         else:
             content += f'''
                 <li>
-                    <a href="{urllib.parse.quote(file)}">{file}</a> 
-                    <button onclick="deleteFile('{urllib.parse.quote(file)}')">Delete</button>
-                    <button onclick="downloadFile('{urllib.parse.quote(file)}', 0)">Download</button>
+                    <a href="{percent_encode_url(file)}">{file}</a> 
+                    <button onclick="deleteFile('{percent_encode_url(file)}')">Delete</button>
+                    <button onclick="downloadFile('{percent_encode_url(file)}', 0)">Download</button>
                 </li>
             '''
 
