@@ -66,6 +66,23 @@ def send_directory_listing(client_socket, dir_path):
                         });
                     }
                 }
+                
+                function downloadFile(filePath) {
+                    alert(filePath);
+                    var isFolder = filePath.endsWith('/');
+                
+                    if (isFolder) {
+                        // to do
+                    } else {
+                        // It's a file, perform regular download
+                        var link = document.createElement('a');
+                        link.download = filePath.split('/').pop();
+                        link.href = filePath;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    }
+                }
             </script>
 
         </head>
@@ -81,7 +98,13 @@ def send_directory_listing(client_socket, dir_path):
         file_path = os.path.join(dir_path, file)
         if os.path.isdir(file_path):
             file += "/"
-        content += f'<li><a href="{urllib.parse.quote(file)}">{file}</a> <button onclick="deleteFile(\'{urllib.parse.quote(file)}\')">Delete</button></li>'
+        content += f'''
+            <li>
+                <a href="{urllib.parse.quote(file)}">{file}</a> 
+                <button onclick="deleteFile('{urllib.parse.quote(file)}')">Delete</button>
+                <button onclick="downloadFile('{urllib.parse.quote(file)}')">Download</button>
+            </li>
+        '''
 
     content += """
             </ul>
