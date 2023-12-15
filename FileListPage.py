@@ -2,7 +2,10 @@ import urllib.parse
 import os
 
 
-def send_directory_listing(client_socket, dir_path):
+def send_directory_listing(client_socket, dir_path, request):
+    query_params = urllib.parse.parse_qs(urllib.parse.urlsplit(request).query)
+    sustech_http = int(query_params.get('SUSTech-HTTP', [0])[0])
+    print("sustech-http = " + str(sustech_http))
     file_list = os.listdir(dir_path)
     content = """
         <html>
@@ -67,13 +70,13 @@ def send_directory_listing(client_socket, dir_path):
                     }
                 }
                 
-                function downloadFile(filePath) {
-                    alert(filePath);
-                    var isFolder = filePath.endsWith('/');
+                function downloadFile(filePath, sustechHttp) {
+                    alert(filePath + " " + sustechHttp);
                 
-                    if (isFolder) {
+                    if (sustechHttp == 1) {
                         // to do
-                    } else {
+                    }
+                    else {
                         // It's a file, perform regular download
                         var link = document.createElement('a');
                         link.download = filePath.split('/').pop();
@@ -93,18 +96,28 @@ def send_directory_listing(client_socket, dir_path):
             <ul>
     """
     content += f'<li><a href="{urllib.parse.quote("..")}">返回上一级</a></li>'
+    content += f'<li><a href="{urllib.parse.quote("/")}">返回根目录</a></li>'
 
     for file in file_list:
         file_path = os.path.join(dir_path, file)
         if os.path.isdir(file_path):
             file += "/"
-        content += f'''
-            <li>
-                <a href="{urllib.parse.quote(file)}">{file}</a> 
-                <button onclick="deleteFile('{urllib.parse.quote(file)}')">Delete</button>
-                <button onclick="downloadFile('{urllib.parse.quote(file)}')">Download</button>
-            </li>
-        '''
+            content += f'''
+                <li>
+                    <a href="{urllib.parse.quote(file)}">{file}</a> 
+                    <button onclick="deleteFile('{urllib.parse.quote(file)}')">Delete</button>
+                    <button onclick="downloadFile('{urllib.parse.quote(file)}', 0)">Download (SUSTech-HTTP=0)</button>
+                    <button onclick="downloadFile('{urllib.parse.quote(file)}', 1)">Download (SUSTech-HTTP=1)</button>
+                </li>
+            '''
+        else:
+            content += f'''
+                <li>
+                    <a href="{urllib.parse.quote(file)}">{file}</a> 
+                    <button onclick="deleteFile('{urllib.parse.quote(file)}')">Delete</button>
+                    <button onclick="downloadFile('{urllib.parse.quote(file)}', 0)">Download</button>
+                </li>
+            '''
 
     content += """
             </ul>

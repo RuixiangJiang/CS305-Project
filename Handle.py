@@ -24,14 +24,14 @@ def handle_request(client_socket):
         if path.endswith("/"):
             dir_path = project_path + path
         print("dir_path = " + dir_path)
-        handle_get(client_socket, path)
+        handle_get(client_socket, path, request_data)
     elif method == "POST":
         handle_post(client_socket, dir_path, request_data)
     elif method == "DELETE":
         handle_delete(client_socket, path, dir_path)
 
 
-def handle_get(client_socket, path):
+def handle_get(client_socket, path, request_data):
     path = project_path + path
     if os.path.isfile(path):
         send_file(client_socket, path)
@@ -42,7 +42,7 @@ def handle_get(client_socket, path):
             client_socket.send(response.encode("utf-8"))
         else:
             # Display directory listing
-            send_directory_listing(client_socket, path)
+            send_directory_listing(client_socket, path, request_data)
     else:
         send_not_found(client_socket)
 
