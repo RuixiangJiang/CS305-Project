@@ -35,12 +35,14 @@ while True:
         if funcSelect == "1":
             # 接收客户端发送的报头长度
             head_struct = clientSock.recv(4)
+            print("head_struct: " + str(head_struct))
 
             # 解析报头的长度
             head_len = struct.unpack('i', head_struct)[0]
 
             # 接收大小为head_len的报头内容（报头内容包括文件大小，文件名内容）
             data = clientSock.recv(head_len)
+            print("data: " + str(data))
 
             # 解析报头的内容, 报头为一个字典其中包含上传文件的大小和文件名，
             head_dir = json.loads(data.decode("utf-8")) # 将JSON字符串解码为python对象
