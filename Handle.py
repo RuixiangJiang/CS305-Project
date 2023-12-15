@@ -1,6 +1,7 @@
 import socket
 import os
 import mimetypes
+import re
 import urllib.parse
 from FileListPage import send_directory_listing
 from urllib.parse import urlparse, unquote
@@ -11,27 +12,27 @@ def handle_request(client_socket):
     global dir_path
     request_data = client_socket.recv(1024).decode("utf-8")
 
-    print("request data = " + str(request_data) + "\nrequest data ends")
+    print("request data = ///////////\n" + str(request_data) + "\nrequest data ends///////////")
 
     if not request_data:
         return
 
     method, path, _ = request_data.split(" ", 2)
     path = urllib.parse.unquote(path)
-    print("method = " + str(method) + " and dir_path = " + dir_path)
 
     if method == "GET":
-        dir_path = project_path + path
+        if path.endswith("/"):
+            dir_path = project_path + path
+        print("dir_path = " + dir_path)
         handle_get(client_socket, path)
     elif method == "POST":
-        handle_post(client_socket, request_data, dir_path)
+        handle_post(client_socket, dir_path, request_data)
     elif method == "DELETE":
         handle_delete(client_socket, path, dir_path)
 
 
 def handle_get(client_socket, path):
     path = project_path + path
-    print("Enter path: " + path)
     if os.path.isfile(path):
         send_file(client_socket, path)
     elif os.path.isdir(path):
@@ -45,34 +46,53 @@ def handle_get(client_socket, path):
     else:
         send_not_found(client_socket)
 
-def handle_post(client_socket, request_data, dir_path):
+def handle_post(client_socket, dir_path, request_data):
     try:
-        print("request_data: " + str(request_data))
-        _, _, content = request_data.partition("\r\n\r\n")
+        # Read the headers to find the content length
+        headers, _, _ = request_data.partition("\r\n\r\n")
+        headers_dict = dict(line.split(": ", 1) for line in headers.split("\r\n")[1:])
+        content_length = int(headers_dict.get('Content-Length', 0))
 
-        # Get the current directory path from the request data
-        _, path, _ = request_data.split(" ", 2)
-        path = urllib.parse.unquote(path)
-        current_dir = dir_path
-        print("current_dir: " + current_dir)
+        # Read the content in chunks
+        chunk_size = 1024
+        received_content = b''
 
-        # Ensure that the current directory is within the project_path to avoid security risks
-        if os.path.commonprefix([os.path.abspath(current_dir), os.path.abspath(project_path)]) != os.path.abspath(
-                project_path):
-            raise ValueError("Invalid directory path")
+        while len(received_content) < content_length:
+            chunk = client_socket.recv(min(chunk_size, content_length - len(received_content)))
+            if not chunk:
+                raise ValueError("Connection closed unexpectedly")
 
-        filename = os.path.join(current_dir, "uploaded_file.txt")
+            received_content += chunk
 
+        # Extract the file content from the multipart form data
+        match = re.search(b'\r\n\r\n(.+?)\r\n--', received_content, re.DOTALL)
+        if not match:
+            raise ValueError("File content not found in multipart form data")
+
+        file_content = match.group(1).decode("utf-8")
+
+        # Extract the filename from the first part of the content
+        filename_match = re.search(b'filename="([^"]+)"', received_content)
+        if not filename_match:
+            raise ValueError("Filename not found in multipart form data")
+
+        # Construct the full file path including the directory path
+        filename = os.path.join(dir_path, filename_match.group(1).decode("utf-8"))
+        print("Upload file: " + str(filename))
+
+        # Create a file with the specified filename and content
         with open(filename, "wb") as file:
-            file.write(content.encode("utf-8"))
+            file.write(file_content.encode("utf-8"))
 
-        response = f"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 17\r\n\r\nFile uploaded!\r\n"
+        # Send a response back to the client
+        response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 17\r\n\r\nFile uploaded!\r\n"
         client_socket.send(response.encode("utf-8"))
 
     except Exception as e:
-        print(f"Error handling POST request: {e}")
-        response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/html\r\nContent-Length: 27\r\n\r\nInternal Server Error\r\n"
-        client_socket.send(response.encode("utf-8"))
+        # Handle errors and send an appropriate response
+        print("Upload error message:" + str(e))
+        error_message = f"HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: {len(str(e))}\r\n\r\n{str(e)}\r\n"
+        client_socket.send(error_message.encode("utf-8"))
 
 
 def handle_delete(client_socket, path, dir_path):
