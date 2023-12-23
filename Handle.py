@@ -55,9 +55,7 @@ def handle_request(client_socket):
                 new_head = {'WWW-Authenticate': 'Basic realm="Login Required"'}
                 http_response.add_header(new_head)
                 http_response.set_response(401, "Unauthorized")
-                # response = gen_http_response(401, "Unauthorized", additional_headers=new_head)
-                response = http_response.gen_response()
-                client_socket.send(response.encode("utf-8"))
+                send_file(client_socket, project_path+"/web/login.html")
                 return
             else:
                 session_id = create_session(username_auth)
