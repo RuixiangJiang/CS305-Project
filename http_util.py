@@ -71,7 +71,7 @@ class HttpResponse:
         print("response status code: " + str(self.status_code))
         print("response header_lines:\n" + str(header_lines))
         return response
-    def gen_response_header(self, content_length):
+    def gen_response_header(self, content_length=0):
         # 确保内容类型被包含在头部中
         self.headers['Content-Type'] = self.content_type
         # 计算内容长度
@@ -84,6 +84,4 @@ class HttpResponse:
         print("RESPONSE status code: " + str(self.status_code))
         print("RESPONSE header_lines:\n" + str(header_lines))
         return response
-
-
 

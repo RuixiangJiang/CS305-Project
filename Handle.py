@@ -13,12 +13,12 @@ dir_path = project_path
 Authorization_needed = True
 
 http_response = None
-
+current_user = None
 def handle_request(client_socket):
     global dir_path
     global http_response
+    global current_user
     request_data = client_socket.recv(1024).decode("utf-8")
-    # print("request data = ///////////\n" + str(request_data) + "\nrequest data ends///////////")
 
     if not request_data:
         return
@@ -58,22 +58,43 @@ def handle_request(client_socket):
                 send_file(client_socket, project_path+"/web/login.html")
                 return
             else:
+                current_user = username_auth
                 session_id = create_session(username_auth)
                 cookie_head = {'Set-Cookie': f'session_id={session_id}'}
                 http_response.add_header(cookie_head)
+        else:
+            current_user = username_cookie
 
-                
-        
+    if current_user == "1":
+        current_user = "admin"
+    
+    # check authorization of user path when upload or delete
+    if path == "/upload" or path == "/delete":
+        target_path = simple_unquote(query_params['path'])
+        if not target_path.startswith(project_path):
+            target_path = project_path + target_path
+        print("target_path = " + str(target_path))
+        if current_user != "admin":
+            if not (target_path.startswith(project_path + current_user + "/")) :
+                http_response.set_response(403, "Forbidden")
+                response = http_response.gen_response()
+                client_socket.send(response.encode("utf-8"))
+                return
+            
     if method == "GET":
         if path.endswith("/"):
             dir_path = project_path + path
         handle_get(client_socket, path, request_data)
-    elif method == "POST":
-        handle_post(client_socket, dir_path, request_data)
-    elif method == "DELETE":
-        handle_delete(client_socket, simple_unquote(query_params['file']), dir_path)
+    elif method == "POST" and path == "/upload":
+        handle_post(client_socket, target_path, request_data)
+    elif method == "POST" and path == "/delete":
+        handle_delete(client_socket, target_path)
     elif method == "HEAD":
         http_response.set_response(200)
+        response = http_response.gen_response()
+        client_socket.send(response.encode("utf-8"))
+    else:
+        http_response.set_response(405, "Method Not Allowed")
         response = http_response.gen_response()
         client_socket.send(response.encode("utf-8"))
 
@@ -119,8 +140,14 @@ def handle_get(client_socket, path, request_data):
     global http_response
     path_ = path
     path = project_path + path
+    _, _, query_params, _, _ = parse_http_params(request_data)
     if os.path.isfile(path):
-        send_file(client_socket, path)
+        chunk = query_params.get('chunked', 0)
+        if chunk == '1':
+            print("send file chunked")
+            send_file_chunked(client_socket, path)
+        else:
+            send_file(client_socket, path)
     elif os.path.isdir(path):
         if not path.endswith("/"):
             # Redirect to the directory path with a trailing slash
@@ -140,64 +167,67 @@ def handle_get(client_socket, path, request_data):
 def handle_post(client_socket, dir_path, request_data):
     global http_response
     try:
-        # Read the headers to find the content length
-        headers, _, _ = request_data.partition("\r\n\r\n")
-        headers_dict = dict(line.split(": ", 1) for line in headers.split("\r\n")[1:])
+        _, _, _, headers, body = parse_http_params(request_data)
+        headers_dict = dict(line.split(": ", 1) for line in headers)
         content_length = int(headers_dict.get('Content-Length', 0))
 
-        # Read the content in chunks
-        chunk_size = 1024
-        received_content = b''
-        print("content_length = " + str(content_length))
+        # 确定分隔符
+        content_type = headers_dict.get('Content-Type', '')
+        boundary = content_type.split("boundary=")[-1]
+        if not boundary:
+            raise ValueError("Multipart boundary not found")
+
+        # 读取所有数据
+        received_content = body.encode("utf-8")
         while len(received_content) < content_length:
-            print(min(chunk_size, content_length - len(received_content)))
-            chunk = client_socket.recv(min(chunk_size, content_length - len(received_content)))
+            chunk = client_socket.recv(min(1024, content_length - len(received_content)))
             if not chunk:
                 raise ValueError("Connection closed unexpectedly")
-
             received_content += chunk
-            print("received_content length = " + str(len(received_content)))
-            # print(chunk.decode("utf-8"))
 
-        # Extract the file content from the multipart form data
-        match = re.search(b'\r\n\r\n(.+?)\r\n--', received_content, re.DOTALL)
-        if not match:
-            raise ValueError("File content not found in multipart form data")
+        # 处理每个部分
+        parts = received_content.split(("--" + boundary).encode())
+        for part in parts:
+            if part:
+                process_multipart_part(part, dir_path)
 
-        file_content = match.group(1)
-
-        # Extract the filename from the first part of the content
-        filename_match = re.search(b'filename="([^"]+)"', received_content)
-        if not filename_match:
-            raise ValueError("Filename not found in multipart form data")
-
-        # Construct the full file path including the directory path
-        filename = os.path.join(dir_path, filename_match.group(1).decode("utf-8"))
-
-        print("Upload file: " + str(filename))
-
-        # Create a file with the specified filename and content
-        with open(filename, "wb") as file:
-            file.write(file_content)
-
-        # Send a response back to the client
+        # 发送响应
         http_response.set_response(200, "File uploaded!")
         # response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 17\r\n\r\nFile uploaded!\r\n"
         response = http_response.gen_response()
         client_socket.send(response.encode("utf-8"))
 
     except Exception as e:
-        # Handle errors and send an appropriate response
         print("Upload error message:" + str(e))
         error_message = f"HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: {len(str(e))}\r\n\r\n{str(e)}\r\n"
         client_socket.send(error_message.encode("utf-8"))
 
+def process_multipart_part(part, dir_path):
+    headers, _, content = part.partition(b'\r\n\r\n')
+    header_lines = headers.decode('utf-8').split('\r\n')
+    header_dict = {}
+    for line in header_lines:
+        if ':' in line:
+            key, value = line.split(':', 1)
+            header_dict[key.strip()] = value.strip()
 
-def handle_delete(client_socket, relative_path, dir_path):
+    
+    content_disposition = header_dict.get('Content-Disposition', '')
+    if 'filename="' in content_disposition:
+        # 提取文件名
+        filename = content_disposition.split('filename="')[-1].split('"')[0]
+        file_path = os.path.join(dir_path, filename)
+
+        # 写入文件
+        with open(file_path, 'wb') as file:
+            file.write(content)
+
+        print(f"File uploaded: {file_path}")
+
+def handle_delete(client_socket, file_path):
     global http_response
     try:
-        print("relative_path = " + str(relative_path))
-        file_path = os.path.join(dir_path, relative_path.lstrip('/'))
+        
 
         # Ensure that the file is within the project_path to avoid security risks
         if os.path.commonprefix([os.path.abspath(file_path), os.path.abspath(project_path)]) != os.path.abspath(
@@ -220,18 +250,43 @@ def handle_delete(client_socket, relative_path, dir_path):
         response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 21\r\n\r\nInternal Server Error\r\n"
         client_socket.send(response.encode("utf-8"))
 
-
 def send_file(client_socket, file_path):
     global http_response
+    print("send file: " + str(file_path))   
     with open(file_path, "rb") as file:
         content = file.read()
         content_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
         http_response.set_content_type(content_type)
-        http_response.set_response(200)
         # response_headers = f"HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {len(content)}\r\n\r\n"
         response_headers = http_response.gen_response_header(len(content))
         client_socket.send(response_headers.encode("utf-8") + content)
+        
+def send_file_chunked(client_socket, file_path):
+    global http_response
+    print("send file: " + str(file_path))
+    
+    content_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+    http_response.set_content_type(content_type)
+    # 设置为 chunked 传输
+    http_response.add_header({'Transfer-Encoding':'chunked'})
+    # 生成响应头
+    response_headers = http_response.gen_response_header()
+    client_socket.send(response_headers.encode("utf-8"))
 
+    # 发送文件内容
+    with open(file_path, "rb") as file:
+        while True:
+            chunk = file.read(1024)  # 读取最多 1024 字节
+            if not chunk:
+                break  # 文件结束
+            # 发送块大小和数据
+            size_str = f"{len(chunk):X}\r\n"
+            client_socket.send(size_str.encode("utf-8"))
+            client_socket.send(chunk)
+            client_socket.send(b"\r\n")
+
+    # 发送结束块
+    client_socket.send(b"0\r\n\r\n")
 
 def send_not_found(client_socket):
     global http_response

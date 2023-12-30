@@ -56,7 +56,7 @@ document.getElementById('registerForm').addEventListener('submit', function(even
 
 // Functions
 
-function uploadFile() {
+function uploadFile(dirPath) {
     // Get the file input element
     var fileInput = document.getElementById('fileInput');
     
@@ -73,7 +73,7 @@ function uploadFile() {
     formData.append('file', file);
 
     // Create a Fetch API POST request to the server
-    fetch('/upload', {
+    fetch(`/upload?path=${encodeURIComponent(dirPath)}`, {
         method: 'POST',
         body: formData
     })
@@ -95,8 +95,8 @@ function uploadFile() {
 function deleteFile(filePath) {
     if (confirm("确认删除文件？")) {
         // Send an asynchronous request to the server to delete the file
-        fetch(`/delete?file=${encodeURIComponent(filePath)}`, {
-            method: 'DELETE'
+        fetch(`/delete?path=${encodeURIComponent(filePath)}`, {
+            method: 'POST'
         })
         .then(response => {
             if (response.ok) {

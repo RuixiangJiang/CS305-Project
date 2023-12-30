@@ -34,6 +34,7 @@ def send_directory_listing(client_socket, dir_path, request, http_response: Http
                 return_list.append(file)
             else:
                 return_list.append(file)
+        return_list.sort()
         http_response.set_response(200, str(return_list))
         response = http_response.gen_response()
         client_socket.send(response.encode())
@@ -43,7 +44,7 @@ def send_directory_listing(client_socket, dir_path, request, http_response: Http
     #     sustech_http = int(query_params.get('SUSTech-HTTP', '0'))
     #     print("sustech-http =", sustech_http)
     
-    content = """
+    content = f"""
         <html>
         <head>
             <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
@@ -52,7 +53,7 @@ def send_directory_listing(client_socket, dir_path, request, http_response: Http
             <script src="/web/script.js"></script>
             <h1>File Listing</h1>
             <input type="file" id="fileInput">
-            <button onclick="uploadFile()">Upload</button>
+            <button onclick="uploadFile('{percent_encode_url(dir_path)}')">Upload</button>
             <ul>
     """
     content += f'<li><a href="{percent_encode_url("..")}">返回上一级</a></li>'
@@ -65,7 +66,7 @@ def send_directory_listing(client_socket, dir_path, request, http_response: Http
             content += f'''
                 <li>
                     <a href="{percent_encode_url(file)}">{file}</a> 
-                    <button onclick="deleteFile('{percent_encode_url(file)}')">Delete</button>
+                    <button onclick="deleteFile('{percent_encode_url(file_path)}')">Delete</button>
                     <button onclick="downloadFile('{percent_encode_url(file)}', 0)">Download (SUSTech-HTTP=0)</button>
                     <button onclick="downloadFile('{percent_encode_url(file)}', 1)">Download (SUSTech-HTTP=1)</button>
                 </li>
@@ -74,7 +75,7 @@ def send_directory_listing(client_socket, dir_path, request, http_response: Http
             content += f'''
                 <li>
                     <a href="{percent_encode_url(file)}">{file}</a> 
-                    <button onclick="deleteFile('{percent_encode_url(file)}')">Delete</button>
+                    <button onclick="deleteFile('{percent_encode_url(file_path)}')">Delete</button>
                     <button onclick="downloadFile('{percent_encode_url(file)}', 0)">Download</button>
                 </li>
             '''
