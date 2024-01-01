@@ -30,7 +30,7 @@ def handle_request(client_socket):
     print("method = " + str(method))
     print("path = " + str(path))
     print("query_params = " + str(query_params))
-    print([h for h in headers if h.startswith('Authorization: Basic')])
+    print([h for h in headers if h.startswith('Authorization: ')])
     print([h for h in headers if h.startswith('Cookie: ')])
     print([h for h in headers if h.startswith('Content-Length: ')])
     # print("headers = " + str(headers))  
@@ -55,7 +55,7 @@ def handle_request(client_socket):
                 new_head = {'WWW-Authenticate': 'Basic realm="Login Required"'}
                 http_response.add_header(new_head)
                 http_response.set_response(401, "Unauthorized")
-                send_file(client_socket, project_path+"/web/login.html")
+                modified_send_file(client_socket, project_path+"/web/login.html", headers)
                 return
             else:
                 current_user = username_auth
@@ -84,7 +84,7 @@ def handle_request(client_socket):
     if method == "GET":
         if path.endswith("/"):
             dir_path = project_path + path
-        handle_get(client_socket, path, request_data)
+        handle_get(client_socket, path, request_data, headers)
     elif method == "POST" and path == "/upload":
         handle_post(client_socket, target_path, request_data)
     elif method == "POST" and path == "/delete":
@@ -136,7 +136,7 @@ def handle_register(client_socket, request_data):
     response = http_response.gen_response()
     client_socket.send(response.encode("utf-8"))
 
-def handle_get(client_socket, path, request_data):
+def handle_get(client_socket, path, request_data, headers):
     global http_response
     path_ = path
     path = project_path + path
@@ -147,7 +147,7 @@ def handle_get(client_socket, path, request_data):
             print("send file chunked")
             send_file_chunked(client_socket, path)
         else:
-            send_file(client_socket, path)
+            modified_send_file(client_socket, path, headers)
     elif os.path.isdir(path):
         if not path.endswith("/"):
             # Redirect to the directory path with a trailing slash
@@ -294,3 +294,74 @@ def send_not_found(client_socket):
     # response = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\nNot Found\r\n"
     response = http_response.gen_response()
     client_socket.send(response.encode("utf-8"))
+def parse_range_header(range_header):
+    """
+    Parses the Range header and returns the start and end byte positions.
+    Returns None if the Range header is invalid.
+    """
+    match = re.match(r'bytes=(\d*)-(\d*)', range_header)
+    if not match:
+        return None
+
+    start, end = match.groups()
+    start = int(start) if start else None
+    end = int(end) if end else None
+    return start, end
+
+def is_valid_range(start, end, file_size):
+    """
+    Checks if the given byte range is valid for the file size.
+    """
+    if start is None and end is None:
+        return False
+    if start is not None and end is not None and start > end:
+        return False
+    if start is not None and start >= file_size:
+        return False
+    if end is not None and end >= file_size:
+        return False
+    return True
+
+def send_file_with_range(client_socket, file_path, range_header):
+    """
+    Sends the requested part of the file based on the Range header.
+    """
+    global http_response
+    file_size = os.path.getsize(file_path)
+    start, end = parse_range_header(range_header)
+    if start is None and end is not None:
+        # Case where range is -500 (last 500 bytes)
+        start = max(file_size - end, 0)
+        end = file_size - 1
+
+    if not is_valid_range(start, end, file_size):
+        http_response.set_response(416, "Range Not Satisfiable")
+        response = http_response.gen_response()
+        client_socket.send(response.encode("utf-8"))
+        return
+
+    if start is None:
+        start = 0
+    if end is None or end >= file_size:
+        end = file_size - 1
+
+    content_length = end - start + 1
+    with open(file_path, "rb") as file:
+        file.seek(start)
+        content = file.read(content_length)
+
+    content_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+    http_response.set_content_type(content_type)
+    http_response.set_response(206, "Partial Content")
+    http_response.add_header({'Content-Range': f'bytes {start}-{end}/{file_size}'})
+    response_headers = http_response.gen_response_header(content_length)
+    client_socket.send(response_headers.encode("utf-8") + content)
+
+# This is the modified version of the send_file function with support for Range headers
+def modified_send_file(client_socket, file_path, headers):
+    range_header = next((h for h in headers if h.startswith('Range: ')), None)
+    if range_header:
+        send_file_with_range(client_socket, file_path, range_header.split(": ", 1)[1])
+    else:
+        # Original send_file functionality
+        send_file(client_socket, file_path)
