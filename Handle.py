@@ -312,15 +312,25 @@ def is_valid_range(start, end, file_size):
     """
     Checks if the given byte range is valid for the file size.
     """
-    if start is None and end is None:
+    if start is not None and start >= file_size:
+        return False
+    if end is not None and end <0:
         return False
     if start is not None and end is not None and start > end:
         return False
-    if start is not None and start >= file_size:
-        return False
-    if end is not None and end >= file_size:
-        return False
     return True
+
+def split_and_convert(input_str):
+    # 首先根据逗号分割成列表
+    elements = input_str.split(',')
+    result = []
+
+    # 遍历每个分割后的元素，并根据减号分割，并将结果转换成tuple
+    for element in elements:
+        start, end = element.split('-')
+        result.append((int(start), int(end)))
+
+    return result
 
 def send_file_with_range(client_socket, file_path, range_header):
     """
@@ -328,34 +338,45 @@ def send_file_with_range(client_socket, file_path, range_header):
     """
     global http_response
     file_size = os.path.getsize(file_path)
-    start, end = parse_range_header(range_header)
-    if start is None and end is not None:
-        # Case where range is -500 (last 500 bytes)
-        start = max(file_size - end, 0)
-        end = file_size - 1
+    ranges = split_and_convert(range_header)
+    lenn = len(ranges)
+    content_length = 0
+    content = ""
+    for i in range(lenn):
+        
+        start = ranges[i][0]
+        end = ranges[i][1]
 
-    if not is_valid_range(start, end, file_size):
-        http_response.set_response(416, "Range Not Satisfiable")
-        response = http_response.gen_response()
-        client_socket.send(response.encode("utf-8"))
-        return
+        if start is None and end is not None:
+            # Case where range is -500 (last 500 bytes)
+            start = max(file_size - end, 0)
+            end = file_size - 1
 
-    if start is None:
-        start = 0
-    if end is None or end >= file_size:
-        end = file_size - 1
+        if not is_valid_range(start, end, file_size):
+            http_response.set_response(416, "Range Not Satisfiable")
+            response = http_response.gen_response()
+            client_socket.send(response.encode("utf-8"))
+            return
 
-    content_length = end - start + 1
-    with open(file_path, "rb") as file:
-        file.seek(start)
-        content = file.read(content_length)
+        if start is None or start < 0:
+            start = 0
+        if end is None or end >= file_size:
+            end = file_size - 1
+
+        content_length += end - start + 2#回车也算一个
+        this_length = end - start + 1
+
+        with open(file_path, "rb") as file:
+            file.seek(start)
+            # print(str(file.read(this_length)))
+            content = content + str(file.read(this_length))[2:-1] + "\n"
 
     content_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
     http_response.set_content_type(content_type)
     http_response.set_response(206, "Partial Content")
     http_response.add_header({'Content-Range': f'bytes {start}-{end}/{file_size}'})
     response_headers = http_response.gen_response_header(content_length)
-    client_socket.send(response_headers.encode("utf-8") + content)
+    client_socket.send(response_headers.encode("utf-8") + content.encode("utf-8"))
 
 # This is the modified version of the send_file function with support for Range headers
 def modified_send_file(client_socket, file_path, headers):
