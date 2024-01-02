@@ -14,11 +14,10 @@ Authorization_needed = True
 
 http_response = None
 current_user = None
-def handle_request(client_socket):
+def handle_request(client_socket, request_data):
     global dir_path
     global http_response
     global current_user
-    request_data = client_socket.recv(1024).decode("utf-8")
 
     if not request_data:
         return
@@ -147,7 +146,7 @@ def handle_get(client_socket, path, request_data):
             print("send file chunked")
             send_file_chunked(client_socket, path)
         else:
-            send_file(client_socket, path)
+            send_file_chunked(client_socket, path)
     elif os.path.isdir(path):
         if not path.endswith("/"):
             # Redirect to the directory path with a trailing slash
