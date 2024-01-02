@@ -14,11 +14,11 @@ Authorization_needed = True
 
 http_response = None
 current_user = None
-def handle_request(client_socket):
+def handle_request(client_socket, request_data):
     global dir_path
     global http_response
     global current_user
-    request_data = client_socket.recv(1024).decode("utf-8")
+    # request_data = client_socket.recv(1024).decode("utf-8")
 
     if not request_data:
         return
@@ -73,6 +73,7 @@ def handle_request(client_socket):
         target_path = simple_unquote(query_params['path'])
         if not target_path.startswith(project_path):
             target_path = project_path + target_path
+        target_path = os.path.normpath(target_path)
         print("target_path = " + str(target_path))
         if current_user != "admin":
             if not (target_path.startswith(project_path + current_user + "/")) :
@@ -84,7 +85,7 @@ def handle_request(client_socket):
     if method == "GET":
         if path.endswith("/"):
             dir_path = project_path + path
-        handle_get(client_socket, path, request_data, headers)
+        handle_get(client_socket, path, request_data)
     elif method == "POST" and path == "/upload":
         handle_post(client_socket, target_path, request_data)
     elif method == "POST" and path == "/delete":
@@ -136,11 +137,11 @@ def handle_register(client_socket, request_data):
     response = http_response.gen_response()
     client_socket.send(response.encode("utf-8"))
 
-def handle_get(client_socket, path, request_data, headers):
+def handle_get(client_socket, path, request_data):
     global http_response
     path_ = path
     path = project_path + path
-    _, _, query_params, _, _ = parse_http_params(request_data)
+    _, _, query_params, headers, _ = parse_http_params(request_data)
     if os.path.isfile(path):
         chunk = query_params.get('chunked', 0)
         if chunk == '1':
@@ -385,4 +386,4 @@ def modified_send_file(client_socket, file_path, headers):
         send_file_with_range(client_socket, file_path, range_header.split(": ", 1)[1])
     else:
         # Original send_file functionality
-        send_file(client_socket, file_path)
+        send_file_chunked(client_socket, file_path)
