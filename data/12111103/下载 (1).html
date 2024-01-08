@@ -1,0 +1,112 @@
+
+        <html>
+        <head>
+            <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+            <script>
+                function uploadFile() {
+                    // Get the file input element
+                    var fileInput = document.getElementById('fileInput');
+                    
+                    // Get the selected file
+                    var file = fileInput.files[0];
+        
+                    if (!file) {
+                        alert("请选择文件！");
+                        return;
+                    }
+        
+                    // Create a FormData object to send the file as part of the POST request
+                    var formData = new FormData();
+                    formData.append('file', file);
+        
+                    // Create a Fetch API POST request to the server
+                    fetch('/upload', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => {
+                        if (response.ok) {
+                            alert("文件已上传！");
+                            // Optionally, you can reload the page or update the file listing
+                            location.reload();
+                        } else {
+                            alert("上传文件失败！");
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert("发生错误，无法上传文件！");
+                    });
+                }
+                
+                function deleteFile(filePath) {
+                    if (confirm("确认删除文件？")) {
+                        // Send an asynchronous request to the server to delete the file
+                        fetch(`/delete?file=${encodeURIComponent(filePath)}`, {
+                            method: 'DELETE'
+                        })
+                        .then(response => {
+                            if (response.ok) {
+                                alert("文件已删除！");
+                                // Optionally, you can reload the page or update the file listing
+                                location.reload();
+                            } else {
+                                alert("删除文件失败！");
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            alert("发生错误，无法删除文件！");
+                        });
+                    }
+                }
+                
+                function downloadFile(filePath, sustechHttp) {
+                    alert(filePath + " " + sustechHttp);
+                
+                    if (sustechHttp == 1) {
+                        // to do
+                    }
+                    else {
+                        // It's a file, perform regular download
+                        var link = document.createElement('a');
+                        link.download = filePath.split('/').pop();
+                        link.href = filePath;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    }
+                }
+            </script>
+
+        </head>
+        <body>
+            <h1>File Listing</h1>
+            <input type="file" id="fileInput">
+            <button onclick="uploadFile()">Upload</button>
+            <ul>
+    <li><a href="..">返回上一级</a></li><li><a href="/">返回根目录</a></li>
+                <li>
+                    <a href="fileClient/">fileClient/</a> 
+                    <button onclick="deleteFile('fileClient/')">Delete</button>
+                    <button onclick="downloadFile('fileClient/', 0)">Download (SUSTech-HTTP=0)</button>
+                    <button onclick="downloadFile('fileClient/', 1)">Download (SUSTech-HTTP=1)</button>
+                </li>
+            
+                <li>
+                    <a href="ML_Lecture_Linear_Regression(5) (1).pdf">ML_Lecture_Linear_Regression(5) (1).pdf</a> 
+                    <button onclick="deleteFile('ML_Lecture_Linear_Regression(5) (1).pdf')">Delete</button>
+                    <button onclick="downloadFile('ML_Lecture_Linear_Regression(5) (1).pdf', 0)">Download</button>
+                </li>
+            
+                <li>
+                    <a href="fileServer/">fileServer/</a> 
+                    <button onclick="deleteFile('fileServer/')">Delete</button>
+                    <button onclick="downloadFile('fileServer/', 0)">Download (SUSTech-HTTP=0)</button>
+                    <button onclick="downloadFile('fileServer/', 1)">Download (SUSTech-HTTP=1)</button>
+                </li>
+            
+            </ul>
+        </body>
+        </html>
+    
